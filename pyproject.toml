@@ -6,9 +6,29 @@ readme = "README.md"
 authors = [
     { name = "Carlos André Braile", email = "andre.prze.filho@gmail.com" }
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.12"
 dependencies = [
+    "accelerate",
+    "bitsandbytes",
+    "ctransformers>=0.2.27",
+    "datasets",
+    "evaluate",
     "httpx>=0.28.1",
+    "huggingface-hub[cli,hf-xet]",
+    "langchain",
+    "langchain-community>=0.3.27",
+    "lightning",
+    "llama-cpp-python>=0.3.2",
+    "matplotlib",
+    "numpy",
+    "peft",
+    "polars",
+    "pydantic",
+    "tensorboard>=2.20.0",
+    "torch",
+    "torchaudio",
+    "torchvision",
+    "transformers[sentencepiece]",
     "websockets>=16.0",
     "webthing>=0.15.0",
 ]
@@ -16,3 +36,23 @@ dependencies = [
 [build-system]
 requires = ["uv_build>=0.9.27,<0.10.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
+[tool.uv]
+index-url = "https://pypi.org/simple"
+
+[[tool.uv.index]]
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
+
+[[tool.uv.index]]
+name = "llama-cpp-cpu"
+url = "https://abetlen.github.io/llama-cpp-python/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+llama-cpp-python = { index = "llama-cpp-cpu" }
