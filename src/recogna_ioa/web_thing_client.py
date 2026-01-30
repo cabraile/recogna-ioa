@@ -9,7 +9,10 @@ class WebThingClient:
         self.ws_url = self.base_url.replace("http://", "ws://")
 
     async def get_properties(self) -> list | dict:
-        """Fetch all current property values via HTTP."""
+        """Fetch all current property values via HTTP.
+
+        It returns the Thing Description json (or list) if multiple objects exist.
+        """
         async with httpx.AsyncClient() as client:
             response = await client.get(f"{self.base_url}/properties")
             return response.json()
