@@ -94,3 +94,34 @@ class WebThingClient:
                 data = json.loads(message)
                 if data["messageType"] == "propertyStatus":
                     print(f"Update received: {data['data']}")
+
+    async def run_action(
+        self,
+        action_name: str,
+        input_data: dict,
+        index: int | None = None,
+        thing_id: str | None = None,
+    ) -> dict | None:
+        """Executes an action via HTTP POST.
+
+        Returns the action instance details (including status) if successful.
+        """
+        if index is None and thing_id:
+            index = self.lookup_thing_idx_by_id(thing_id)
+
+        if index is None:
+            print("Thing not found")
+            return None
+
+        async with httpx.AsyncClient() as client:
+            url = f"{self.base_url}/{index}/actions/{action_name}"
+            payload = {action_name: {"input": input_data}}
+            response = await client.post(url, json=payload)
+
+            if response.status_code in (200, 201):
+                return response.json()
+            else:
+                print(
+                    f"Error executing action: {response.status_code} - {response.text}"
+                )
+                return None

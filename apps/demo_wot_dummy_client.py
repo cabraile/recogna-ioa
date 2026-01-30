@@ -2,7 +2,7 @@ import asyncio
 import sys
 from recogna_ioa.web_thing_client import WebThingClient
 
-DEFAULT_DEMO_THING = "lamp"  # 'lamp' or 'sensor'
+DEFAULT_DEMO_THING = "action_demo"  # 'lamp', 'sensor', or 'action_demo'
 
 
 async def lamp_client_manager():
@@ -41,6 +41,23 @@ async def sensor_client_manager():
     await client.monitor(thing_id="urn:dev:ops:my-humidity-sensor-1234")
 
 
+async def action_demo():
+    client = WebThingClient("http://localhost:8888")
+    lamp_thing = client.available_things[0]
+
+    props = await client.get_properties(thing_id=lamp_thing["id"])
+    print("Propriedades antes da ação: ", props)
+    ret = await client.run_action(
+        "fade", {"brightness": 50, "duration": 3000}, thing_id=lamp_thing["id"]
+    )
+    if not ret:
+        print("Falhou")
+        return
+    print(ret)
+    props = await client.get_properties(thing_id=lamp_thing["id"])
+    print("Propriedades após a ação: ", props)
+
+
 def main():
     target = (DEFAULT_DEMO_THING if len(sys.argv) == 1 else sys.argv[1]).lower()
 
@@ -49,6 +66,8 @@ def main():
             asyncio.run(lamp_client_manager())
         if target == "sensor":
             asyncio.run(sensor_client_manager())
+        if target == "action_demo":
+            asyncio.run(action_demo())
     except KeyboardInterrupt:
         pass
 

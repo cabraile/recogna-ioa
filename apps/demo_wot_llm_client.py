@@ -1,84 +1,87 @@
 """Nesta demo um LLM vai receber os TD da rede, vai receber um prompt, e vai tomar as decisões baseadas neste."""
 
+import time
 import asyncio
-from langchain.prompts import PromptTemplate
 from langchain_community.llms import CTransformers
 
 from recogna_ioa.web_thing_client import WebThingClient
-
-
-LLM_MODEL = CTransformers(
-    model="recogna-nlp/bode-7b-alpaca-pt-br-gguf",
-    model_file="bode-7b-alpaca-q8_0.gguf",
-    model_type="llama",
-    config={
-        "temperature": 0.0,
-        "max_new_tokens": 128,
-    },
+from recogna_ioa.agents import (
+    ThingSelectorAgent,
+    ThingActionSelectorAgent,
+    ThingActionSelectionAgentReturnCode,
 )
-
-TOOL_SELECTOR_AGENT_PROMPT_TEMPLATE = """### Instruções
-Você é um agente controlador de dispositivos em uma rede doméstica.
-Você deve escolher dentre as opções de dispositivos abaixo o mais apropriado para a pergunta do usuário.
-
-```
-{available_thing_ids_and_descriptions_str}
-```
-
-Note que o que antecede o `:` corresponde ao ID e o resto corresponde à descrição.
-Sua resposta deve ser exatamente uma string contendo o ID do dispositivo mais relevante para o pedido do usuário.
-
-### Entrada
-
-{input_text}
-
-### Resultado
-"""
-
-
-class ToolSelectorAgent:
-
-    def __init__(self):
-        self.prompt = PromptTemplate(
-            template=TOOL_SELECTOR_AGENT_PROMPT_TEMPLATE,
-            input_variables=["available_thing_ids_and_descriptions_str", "input_text"],
-        )
-        self.llm_chain = self.prompt | LLM_MODEL
-
-    def run(self, input_text: str, thing_description_list: list[dict]) -> str:
-        """Returns the relevant device ID"""
-        thing_description_str = make_id_description_pair_lines(thing_description_list)
-        inputs = {
-            "input_text": input_text,
-            "available_thing_ids_and_descriptions_str": thing_description_str,
-        }
-        response = self.llm_chain.invoke(inputs)
-
-        # Debug purposes only
-        full_prompt = self.prompt.format(**inputs)
-        print("Prompt: ```")
-        print(full_prompt)
-        print("```")
-
-        return response
-
-
-def make_id_description_pair_lines(thing_description_list: list[dict[str, any]]) -> str:
-    pair_strs = [
-        f"{thing['id']}: {thing['description']}" for thing in thing_description_list
-    ]
-    return "\n".join(pair_strs)
 
 
 async def main():
-    client = WebThingClient("http://localhost:8888")
-    agent = ToolSelectorAgent()
-    print(
-        agent.run(
-            "Está muito escuro, gostaria que ficasse mais claro.",
-            client.available_things,
-        )
+    prompt = "Está muito escuro, gostaria que ficasse mais claro."
+
+    # Iniciar os agentes
+    llm = CTransformers(
+        model="recogna-nlp/bode-7b-alpaca-pt-br-gguf",
+        model_file="bode-7b-alpaca-q8_0.gguf",
+        model_type="llama",
+        config={
+            "temperature": 0.0,
+            "max_new_tokens": 256,
+            "repetition_penalty": 1.2,
+        },
     )
+    thing_selector_agent = ThingSelectorAgent(llm_model=llm)
+    thing_action_selector_agent = ThingActionSelectorAgent(llm_model=llm)
+
+    # Iniciar a comunicação com o servidor de WoT
+    client = WebThingClient("http://localhost:8888")
+    thing_description_list = client.available_things
+
+    # Passo 1: Obter a Thing relevante para o prompt
+    print("SELEÇÃO DO THING")
+    print("=" * 8)
+    time_start = time.time()
+    selected_thing_id: str = thing_selector_agent.run(
+        input_text=prompt,
+        thing_description_list=thing_description_list,
+    )
+    duration_sec = time.time() - time_start
+    print(
+        f"> O agente decidiu usar o Thing {selected_thing_id} (raciocinou por {duration_sec:.2f}s)"
+    )
+
+    # Passo 2: Verificar dentro das ações possíveis para a Thing qual é a mais indicada e seus parâmetros
+    print("=" * 8)
+    print("SELEÇÃO DA AÇÃO")
+    print("=" * 8)
+    selected_thing_idx = client.lookup_thing_idx_by_id(selected_thing_id)
+    target_thing_description = thing_description_list[selected_thing_idx]
+    target_thing_state = await client.get_properties(index=selected_thing_idx)
+    time_start = time.time()
+    action_outcome = thing_action_selector_agent.run(
+        prompt,
+        target_thing_description,
+        thing_state=target_thing_state,
+    )
+    duration_sec = time.time() - time_start
+    print(f"> O agente raciocinou sobre a ação por {duration_sec:.2f}s")
+    print("> Código de retorno: ", action_outcome.code.name)
+    print("> Saída obtida sem processamento")
+    print("```")
+    print(action_outcome.output)
+    print("```")
+
+    # Passo 3: Executar
+    if action_outcome.code == ThingActionSelectionAgentReturnCode.SUCCESS:
+        out_dict = action_outcome.parsed_output
+        action_id = list(out_dict.keys())[0]
+        params_dict = out_dict[action_id]["input"]
+        print(f"Executando a ação '{action_id}' com parâmetros", end="")
+        for param_name, param_value in params_dict.items():
+            print(f" '{param_name}':'{param_value}'", end="")
+        print()
+        res = await client.run_action(action_name=action_id, input_data=params_dict)
+        if res:
+            print("A ação foi executada com sucesso. Resultado: ")
+            print(res)
+        else:
+            print("Falha em executar a ação")
 
 
 if __name__ == "__main__":
