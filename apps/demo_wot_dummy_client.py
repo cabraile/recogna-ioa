@@ -7,13 +7,13 @@ DEFAULT_DEMO_THING = "lamp"  # 'lamp' or 'sensor'
 
 async def lamp_client_manager():
 
-    lamp_client = WebThingClient("http://localhost:8888/0")
+    client = WebThingClient("http://localhost:8888")
 
     action = ""
     while True:
         print("Estado atual")
         print("=" * 8)
-        props = await lamp_client.get_properties()
+        props = await client.get_properties()
         print(props)
         print()
 
@@ -24,20 +24,21 @@ async def lamp_client_manager():
         if action not in ["l", "d"]:
             continue
         set_on = action == "l"
-        success = await lamp_client.set_property("on", set_on)
+        success = await client.set_property("on", set_on, index=0)
         print(f"Retorno da operação: {success}")
         print("=" * 8)
 
 
 async def sensor_client_manager():
-    sensor_client = WebThingClient("http://localhost:8888/1")
+    client = WebThingClient("http://localhost:8888")
     print("Estado atual")
     print("=" * 8)
-    props = await sensor_client.get_properties()
+    props = await client.get_properties(index=1)
     print(props)
     print()
 
-    await sensor_client.monitor()
+    # also works with the thing_id!
+    await client.monitor(thing_id="urn:dev:ops:my-humidity-sensor-1234")
 
 
 def main():
